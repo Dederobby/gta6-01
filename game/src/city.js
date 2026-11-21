@@ -18,11 +18,12 @@ const BEACH_ROW = 56; // one beach strip between the beachfront road and the sea
 const BUILDING_COLORS = [PALETTE.building, PALETTE.building2, PALETTE.building3, PALETTE.building4];
 const ROOF_COLORS = [PALETTE.roof, '#6b4a3a', '#a0714f', '#7a6a58'];
 const WAREHOUSE_COLORS = ['#9aa0a8', '#8d9299', '#a8a49a'];
+const BOAT_COLORS = ['#e8e3c8', '#c0392b', '#2e86c1', '#d9a441'];
 
 // Special blocks, keyed "bx,by". Parks have trees and no buildings; the
 // stadium is one big structure; the east edge is warehouses; downtown
 // (centre-north) gets taller, denser buildings.
-const PARK_BLOCKS = new Set(['1,4', '6,1', '4,6']);
+const PARK_BLOCKS = new Set(['1,4', '6,1', '4,6', '2,2']);
 const STADIUM_BLOCK = '7,4';
 const MANSION_BLOCK = '0,0';
 
@@ -55,6 +56,7 @@ export function createCity(rng) {
   const buildings = [];
   const trees = [];
   const piers = [];
+  const boats = [];
 
   // ---- grid: water / beach / roads / sidewalks / block interiors ----
   for (let ty = 0; ty < tiles; ty += 1) {
@@ -194,6 +196,23 @@ export function createCity(rng) {
     piers.push({ x: px, y: BEACH_ROW * tile, w: 26, h: (WATER_ROW + 3) * tile - BEACH_ROW * tile });
   }
 
+  // ---- boats: moored beside the piers and a few drifting further out ----
+  for (let i = 0; i < piers.length; i += 1) {
+    const pier = piers[i];
+    boats.push({
+      x: pier.x + pier.w + 34, y: pier.y + 60 + rng() * 60,
+      angle: Math.PI / 2 + (rng() - 0.5) * 0.4,
+      color: pick(rng, BOAT_COLORS), len: 52 + rng() * 22,
+    });
+  }
+  for (let i = 0; i < 5; i += 1) {
+    boats.push({
+      x: (4 + rng() * 50) * tile, y: (WATER_ROW + 0.5 + rng() * 2) * tile,
+      angle: rng() * Math.PI * 2,
+      color: pick(rng, BOAT_COLORS), len: 44 + rng() * 26,
+    });
+  }
+
   // ---- landmarks: one road-adjacent point per name in LANDMARKS ----
   // southOf(bx,by): centre of the road just south of a block.
   // eastOf(bx,by): centre of the road just east of a block.
@@ -217,6 +236,7 @@ export function createCity(rng) {
     mansion: southOf(0, 0),
     casino: eastOf(5, 1), // downtown
     marina: { x: (piers[2].x + piers[2].w / 2), y: beachRoadY },
+    gunShop: eastOf(6, 3), // midtown, between the park and the stadium
   };
   // Sanity: every landmark must sit on a road tile (cheap assert in dev).
   for (const name of LANDMARKS) {
@@ -365,6 +385,26 @@ export function createCity(rng) {
       ctx.fillRect(p.x + p.w, p.y, 3, p.h);
     }
 
+    // Boats moored by the piers and drifting on the open water.
+    for (const b of boats) {
+      if (b.x + b.len < cam.x || b.x - b.len > cam.x + cam.w || b.y + b.len < cam.y || b.y - b.len > cam.y + cam.h) continue;
+      ctx.save();
+      ctx.translate(b.x, b.y);
+      ctx.rotate(b.angle);
+      ctx.fillStyle = 'rgba(0,0,0,0.2)';
+      ctx.fillRect(-b.len / 2 + 3, -6, b.len, 14);
+      ctx.fillStyle = b.color;
+      ctx.beginPath();
+      ctx.moveTo(-b.len / 2, -8);
+      ctx.lineTo(b.len / 2, 0);
+      ctx.lineTo(-b.len / 2, 8);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#20242e';
+      ctx.fillRect(-b.len / 4, -4, b.len / 3, 8);
+      ctx.restore();
+    }
+
     // Buildings: drop shadow, base, lighter roof, a few windows.
     for (const b of buildings) {
       if (b.x + b.w < cam.x || b.x > cam.x + cam.w || b.y + b.h < cam.y || b.y > cam.y + cam.h) continue;
@@ -448,10 +488,15 @@ export function createCity(rng) {
     for (const b of buildings) {
       ctx.fillRect(x + b.x * sx, y + b.y * sy, Math.max(1, b.w * sx), Math.max(1, b.h * sy));
     }
+    // Piers as short lines into the water.
+    ctx.fillStyle = '#8a6a45';
+    for (const p of piers) {
+      ctx.fillRect(x + p.x * sx, y + p.y * sy, Math.max(1, p.w * sx), p.h * sy);
+    }
   }
 
   return {
-    size, tile, tiles, grid, buildings, trees, landmarks,
+    size, tile, tiles, grid, buildings, trees, piers, boats, landmarks,
     cellAt, isRoadAt, isWaterAt, isBlockedAt, roadPoint, sidewalkPoint,
     drawGround, drawMinimapBase,
   };

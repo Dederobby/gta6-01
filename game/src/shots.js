@@ -19,8 +19,10 @@ const DIRS = [[1, 0], [0, 1], [-1, 0], [0, -1]];
 /** Breadth-first path over the road grid from the car's tile to the target's
  * tile. Returns tile centres from start to goal, or null if no road route
  * exists. The road network is a grid, so this always finds the route a
- * driver would take instead of cutting straight across blocks. */
-function findPath(city, from, to) {
+ * driver would take instead of cutting straight across blocks. Exported for
+ * the playtest driver, which walks the same road routes on foot: a straight
+ * line across a block wedges a walker in a building corner. */
+export function findPath(city, from, to) {
   const tiles = 60;
   const tile = 64;
   const clampT = (v) => Math.max(0, Math.min(tiles - 1, v));
@@ -79,8 +81,11 @@ function findPath(city, from, to) {
 /** A synthetic input that drives or walks toward a target point. When
  * enterFirst is set, it first walks to the nearest car and keeps pressing E
  * until the player is behind the wheel, then drives to the target. If the
- * car stops making progress, it does a reverse-and-turn to get unstuck. */
-export function makePilot(world, getTarget, enterFirst) {
+ * car stops making progress, it does a reverse-and-turn to get unstuck.
+ * avoidCar, when given, names cars the pilot must not steal (a car it just
+ * abandoned as wedged, for example): the pilot walks past it to the next
+ * nearest car instead of climbing straight back into the same wreck. */
+export function makePilot(world, getTarget, enterFirst, avoidCar) {
   let windowSteps = 0;
   let windowX = 0;
   let windowY = 0;
@@ -94,11 +99,12 @@ export function makePilot(world, getTarget, enterFirst) {
       const state = world.state;
       const p = state.player;
       if (enterFirst && !p.car) {
-        // Walk to the nearest stealable car first.
+        // Walk to the nearest stealable car first (skipping avoided ones).
         let best = null;
         let bestD = Infinity;
         for (const car of state.cars) {
           if (car.dead || car.driver === 'police' || car.driver === 'rival') continue;
+          if (avoidCar && avoidCar(car)) continue;
           const d = Math.hypot(car.x - p.x, car.y - p.y);
           if (d < bestD) { bestD = d; best = car; }
         }
@@ -232,9 +238,10 @@ export function stageShot(name, world) {
   }
   // Default: chase — the cover. Steal a car first (no heat yet, so the
   // player takes a street car, not a police car), then three stars, police
-  // on the tail, driving hard toward the first mission marker. (The paint
-  // shop can clear heat mid-drive, so the heat is staged at the end, right
-  // before the frame.)
+  // on the tail, driving hard toward the first mission marker. The heat is
+  // staged at the end, right before the frame, and the chase runs a little
+  // longer after staging so the police close in and the sirens show.
+  // (The paint shop can clear heat mid-drive, so staging it last matters.)
   placePlayerByCar(world);
   const pilot = makePilot(world, () => {
     const o = currentObjective(world);
@@ -245,6 +252,6 @@ export function stageShot(name, world) {
   world.state.wantedStars = 3;
   stepFor(world, pilot, 6);
   stagePoliceChase(world, 3);
-  stepFor(world, pilot, 1);
+  stepFor(world, pilot, 1.5);
   return { screen: SCREEN_PLAY, best: 0 };
 }

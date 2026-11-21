@@ -6,7 +6,7 @@
 // Everything here is original: the city, the names, the story.
 
 import {
-  CAR_CLASS, CELL, ECONOMY, FIELD, MISSION_COUNT, PALETTE, PLAYER,
+  CAR_CLASS, CELL, ECONOMY, FIELD, HEAT, MISSION_COUNT, PALETTE, PLAYER,
   SAVE_KEY, STEP, TRAFFIC, WANTED, WORLD,
 } from './config.js';
 import { createCity } from './city.js';
@@ -23,6 +23,7 @@ const TAU = Math.PI * 2;
 const CAR_COLORS = ['#c0392b', '#2e86c1', '#e8e3c8', '#5d6d7e', '#a93226', '#1e8449', '#7d3c98', '#b7950b'];
 const PED_SHIRTS = ['#e8e0d0', '#7fa3b8', '#c98f5f', '#b0788a', '#5da85c', '#d9a441', '#8e7cc3', '#e07a5f'];
 const PED_SKINS = ['#e8b98a', '#c98d5f', '#8a5a3b', '#f0c8a0'];
+const STREET_KINDS = ['sedan', 'sedan', 'taxi', 'truck', 'sport', 'muscle'];
 
 function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
 function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
@@ -45,6 +46,7 @@ function makeCar(rng, kind, x, y, angle, driver) {
     id: Math.floor(rng() * 1e9), kind, driver, x, y, angle, speed: 0,
     health: spec.health, maxHealth: spec.health, color,
     targetSpeed: 0, turn: 0, stuck: 0, dead: false, siren: 0, hitCd: 0,
+    nearMissed: false, wait: 0,
   };
 }
 
@@ -97,11 +99,14 @@ export function createWorld(random) {
     score: 0,
     kills: 0,
     carsStolen: 0,
+    nearMisses: 0,
     missionIndex: 0,
     mission: null,
     package: false,
     camera: { x: 0, y: 0 },
     shake: 0,
+    skidCd: 0,
+    shopCd: 0,
     overReason: null,
     won: false,
     saveTimer: 0,
@@ -135,11 +140,14 @@ export function resetWorld(world, keepSave) {
   state.unseen = 0;
   state.kills = 0;
   state.carsStolen = 0;
+  state.nearMisses = 0;
   state.mission = null;
   state.package = false;
   state.camera.x = clamp(hideout.x - FIELD.width / 2, 0, WORLD.size - FIELD.width);
   state.camera.y = clamp(hideout.y - FIELD.height / 2, 0, WORLD.size - FIELD.height);
   state.shake = 0;
+  state.skidCd = 0;
+  state.shopCd = 0;
   state.overReason = null;
   state.won = false;
   if (keep) {
@@ -155,8 +163,7 @@ export function resetWorld(world, keepSave) {
   // Seed the streets: parked cars and a few moving ones near the hideout.
   for (let i = 0; i < 14; i += 1) {
     const p = state.city.roadPoint(random);
-    const kinds = ['sedan', 'sedan', 'taxi', 'truck', 'sport'];
-    const car = makeCar(random, kinds[Math.floor(random() * kinds.length)], p.x, p.y, p.angle, random() < 0.5 ? 'parked' : 'traffic');
+    const car = makeCar(random, STREET_KINDS[Math.floor(random() * STREET_KINDS.length)], p.x, p.y, p.angle, random() < 0.5 ? 'parked' : 'traffic');
     state.cars.push(car);
   }
   for (let i = 0; i < 16; i += 1) {
@@ -167,7 +174,9 @@ export function resetWorld(world, keepSave) {
   startMission(world, state.missionIndex);
 }
 
-/** Put the player back on their feet after busted/wasted, keeping progress. */
+/** Put the player back on their feet after busted/wasted, keeping progress.
+ * A wasted trip to the hospital costs the hospital fee — the bill comes out
+ * of the player's cash, never below zero. */
 export function respawn(world, reason) {
   const { state } = world;
   const spot = reason === 'busted' ? state.city.landmarks.hideout : state.city.landmarks.hospital;
@@ -179,6 +188,9 @@ export function respawn(world, reason) {
   state.wanted = 0;
   state.wantedStars = 0;
   state.overReason = null;
+  if (reason === 'wasted') {
+    state.cash = Math.max(0, state.cash - ECONOMY.hospitalCost);
+  }
   state.camera.x = clamp(spot.x - FIELD.width / 2, 0, WORLD.size - FIELD.width);
   state.camera.y = clamp(spot.y - FIELD.height / 2, 0, WORLD.size - FIELD.height);
   // The police scatter after a bust or a hospital stay.
@@ -354,22 +366,29 @@ function punch(state) {
   return events;
 }
 
+/** Fire the pistol at the aim point. On foot the shot leaves the player's
+ * hands; from a car it is a drive-by out of the window — weaker, but the
+ * player keeps moving, which is what the `destroy` missions need. */
 function shoot(state, aim) {
   const p = state.player;
-  if (p.shotCd > 0 || p.ammo <= 0 || p.car || !aim) return 0;
+  if (p.shotCd > 0 || p.ammo <= 0 || !aim) return 0;
+  const fromCar = !!p.car;
+  const ox = fromCar ? p.car.x : p.x;
+  const oy = fromCar ? p.car.y : p.y;
   p.shotCd = PLAYER.shotCooldown;
   p.ammo -= 1;
   AudioSys.sfx('shot');
-  const dx = Math.cos(p.aimAngle);
-  const dy = Math.sin(p.aimAngle);
-  const mx = p.x + dx * 18;
-  const my = p.y + dy * 18;
-  burst(state, mx, my, '#ffe08a', 3, 80, 0.15, 3);
+  const aimAngle = Math.atan2(aim.y - oy, aim.x - ox);
+  p.aimAngle = aimAngle;
+  const damage = fromCar ? PLAYER.driveByDamage : PLAYER.shotDamage;
+  const dx = Math.cos(aimAngle);
+  const dy = Math.sin(aimAngle);
+  burst(state, ox + dx * 18, oy + dy * 18, '#ffe08a', 3, 80, 0.15, 3);
   // Walk the bullet out until it hits a car, a person or a wall.
   let events = 0;
   for (let t = 24; t < PLAYER.shotRange; t += 12) {
-    const x = p.x + dx * t;
-    const y = p.y + dy * t;
+    const x = ox + dx * t;
+    const y = oy + dy * t;
     if (state.city.isBlockedAt(x, y)) {
       burst(state, x, y, '#c9c2b2', 5, 90, 0.3, 3);
       break;
@@ -377,9 +396,10 @@ function shoot(state, aim) {
     let hit = false;
     for (const car of state.cars) {
       if (car.dead) continue;
+      if (fromCar && car === p.car) continue;
       if (Math.abs((x - car.x) * Math.cos(car.angle) + (y - car.y) * Math.sin(car.angle)) < CAR_CLASS[car.kind].length / 2
         && Math.abs(-(x - car.x) * Math.sin(car.angle) + (y - car.y) * Math.cos(car.angle)) < CAR_CLASS[car.kind].width / 2) {
-        car.health -= PLAYER.shotDamage;
+        car.health -= damage;
         burst(state, x, y, '#ff5a3c', 6, 120, 0.35, 4);
         if (car.driver === 'police') events |= addWanted(state, 1);
         if (car.health <= 0) explodeCar(state, car);
@@ -391,7 +411,7 @@ function shoot(state, aim) {
     for (const ped of state.peds) {
       if (ped.dead) continue;
       if (Math.hypot(ped.x - x, ped.y - y) < 16) {
-        ped.hp -= PLAYER.shotDamage;
+        ped.hp -= damage;
         ped.flee = 3;
         burst(state, ped.x, ped.y, '#ff5a3c', 8, 130, 0.4, 4);
         if (ped.hp <= 0) {
@@ -482,20 +502,29 @@ function enterCar(state) {
   return events;
 }
 
-function stepDrive(state, dt, input) {
+function stepDrive(state, dt, input, aim) {
   const car = state.player.car;
   if (!car) return 0;
   const spec = CAR_CLASS[car.kind];
   const mv = input.move();
-  const fwd = Math.cos(car.angle);
-  const rgt = Math.sin(car.angle);
-  // Steering follows the road direction the player wants.
   const steer = mv.x;
   const throttle = mv.y < 0 ? 1 : mv.y > 0 ? -0.6 : 0; // up = gas, down = brake/reverse
+  if (aim) state.player.aimAngle = Math.atan2(aim.y - car.y, aim.x - car.x);
+  // Cooldowns tick down in the car too: the drive-by pistol uses shotCd,
+  // and it must recover while driving or the player fires exactly once.
+  state.player.shotCd = Math.max(0, state.player.shotCd - dt);
+  state.player.punchCd = Math.max(0, state.player.punchCd - dt);
   if (throttle > 0) car.speed += spec.accel * dt;
   else if (throttle < 0) car.speed -= (car.speed > 0 ? spec.accel * 1.4 : spec.accel * 0.7) * dt;
   else car.speed -= car.speed * 0.7 * dt;
-  if (input.spaceHeld()) car.speed -= car.speed * 2.2 * dt; // handbrake
+  if (input.spaceHeld()) {
+    car.speed -= car.speed * 2.2 * dt; // handbrake
+    // A hard handbrake turn at speed skids: one short screech per half second.
+    if (Math.abs(car.speed) > 200 && state.skidCd <= 0) {
+      AudioSys.sfx('skid');
+      state.skidCd = 0.5;
+    }
+  }
   car.speed = clamp(car.speed, -spec.reverse, spec.maxSpeed);
   const turnRate = spec.grip * clamp(Math.abs(car.speed) / spec.maxSpeed, 0.45, 1) * (car.speed < 0 ? -1 : 1);
   car.angle += steer * turnRate * dt * (input.spaceHeld() ? 1.5 : 1);
@@ -523,6 +552,22 @@ function stepDrive(state, dt, input) {
   }
   car.x = clamp(car.x, 40, WORLD.size - 40);
   car.y = clamp(car.y, 40, WORLD.size - 40);
+  // Near miss: threading past a traffic car at speed, without touching it,
+  // pays a small score bonus — once per car until it is far away again.
+  if (Math.abs(car.speed) > ECONOMY.nearMissSpeed) {
+    for (const other of state.cars) {
+      if (other === car || other.dead || other.driver !== 'traffic') continue;
+      const d = Math.hypot(other.x - car.x, other.y - car.y);
+      if (d < 80 && !other.nearMissed) {
+        other.nearMissed = true;
+        state.nearMisses += 1;
+        floatText(state, car.x, car.y - 34, `NEAR MISS +${ECONOMY.nearMissScore}`, PALETTE.star);
+        AudioSys.sfx('nearMiss');
+      } else if (d > 220) {
+        other.nearMissed = false;
+      }
+    }
+  }
   return 0;
 }
 
@@ -592,6 +637,27 @@ function stepTrafficCar(state, car, dt) {
     const ox = other.x - car.x;
     const oy = other.y - car.y;
     if (ox * dx + oy * dy > 0 && Math.hypot(ox, oy) < 90) { blocked = true; break; }
+  }
+  // A car that waits forever behind a stopped car gridlocks the street:
+  // after a few seconds it gives up and turns away (a U-turn if no crossing
+  // road is open), so traffic keeps flowing around a jam instead of joining it.
+  if (blocked) car.wait += dt;
+  else car.wait = 0;
+  if (car.wait > 2.5) {
+    car.wait = 0;
+    const options = [];
+    for (let i = 0; i < 4; i += 1) {
+      if (i === (DIRS.indexOf(dir) + 2) % 4) continue; // not a U-turn if avoidable
+      const nd = DIRS[i];
+      if (roadAhead(state, car.x, car.y, nd[0], nd[1], 70)) options.push(nd);
+    }
+    if (options.length === 0) car.angle += Math.PI; // U-turn
+    else {
+      const nd = options[Math.floor(state.rng() * options.length)];
+      car.angle = Math.atan2(nd[1], nd[0]);
+    }
+    car.speed *= 0.5;
+    blocked = false;
   }
   const target = blocked ? 0 : 120 + car.targetSpeed;
   car.speed += clamp(target - car.speed, -300 * dt, 200 * dt);
@@ -788,6 +854,7 @@ function stepWanted(state, dt) {
 function stepShops(state, dt) {
   const p = state.player;
   const lm = state.city.landmarks;
+  state.shopCd = Math.max(0, state.shopCd - dt);
   // Paint shop: drive in with heat and cash, drive out clean.
   if (p.car && state.wantedStars > 0 && state.cash >= ECONOMY.paintCost) {
     const d = Math.hypot(p.car.x - lm.paintShop.x, p.car.y - lm.paintShop.y);
@@ -811,6 +878,19 @@ function stepShops(state, dt) {
       AudioSys.sfx('pickup');
     }
   }
+  // Gun shop: walk in short on bullets and the clerk sells 24 for cash.
+  // One box per visit pause (shopCd), so standing in the doorway does not
+  // drain the wallet in a single frame.
+  if (!p.car && p.ammo <= PLAYER.maxAmmo - 24 && state.cash >= ECONOMY.ammoCost && state.shopCd <= 0) {
+    const d = Math.hypot(p.x - lm.gunShop.x, p.y - lm.gunShop.y);
+    if (d < 80) {
+      state.cash -= ECONOMY.ammoCost;
+      p.ammo = Math.min(PLAYER.maxAmmo, p.ammo + 24);
+      state.shopCd = 1.5;
+      floatText(state, p.x, p.y - 30, `+24 AMMO -$${ECONOMY.ammoCost}`, PALETTE.ammo);
+      AudioSys.sfx('buy');
+    }
+  }
 }
 
 /* ---------------- missions ---------------- */
@@ -826,7 +906,7 @@ export function startMission(world, index) {
   state.mission = {
     def,
     oi: 0,
-    data: { timer: 0, destroyed: 0, killsAtStart: state.kills, spawned: 0 },
+    data: { timer: 0, destroyed: 0, killsAtStart: state.kills, spawned: 0, heatCd: 0 },
   };
   state.package = false;
   AudioSys.sfx('missionStart');
@@ -841,7 +921,7 @@ function advanceObjective(state) {
   const m = state.mission;
   if (!m) return 0;
   m.oi += 1;
-  m.data = { timer: 0, destroyed: 0, killsAtStart: state.kills, spawned: 0 };
+  m.data = { timer: 0, destroyed: 0, killsAtStart: state.kills, spawned: 0, heatCd: 0 };
   AudioSys.sfx('pickup');
   floatText(state, state.player.x, state.player.y - 34, 'OBJECTIVE DONE', PALETTE.health);
   if (m.oi >= m.def.objectives.length) {
@@ -849,7 +929,7 @@ function advanceObjective(state) {
     state.cash += reward;
     state.earned += reward;
     state.missionIndex += 1;
-    state.score = state.earned + state.missionIndex * 500 + state.kills * 25 + state.carsStolen * 10;
+    state.score = state.earned + state.missionIndex * 500 + state.kills * 25 + state.carsStolen * 10 + state.nearMisses * ECONOMY.nearMissScore;
     floatText(state, state.player.x, state.player.y - 54, `+$${reward}`, PALETTE.star);
     AudioSys.sfx('missionDone');
     burst(state, state.player.x, state.player.y, '#ffd23f', 16, 160, 0.7, 5);
@@ -921,6 +1001,24 @@ function stepMission(state, dt) {
       break;
     }
     case 'survive': {
+      // The job brings its own heat: if the wanted level is below the
+      // objective's floor, raise it (and re-raise it every few seconds
+      // while the timer runs), so the player can always finish the job
+      // instead of depending on crimes they may not have committed.
+      // The heat also never cools off on its own mid-job: the cops stay
+      // on the player's tail until the timer is done, so the timer runs
+      // in real time instead of stalling whenever the chase goes quiet.
+      state.unseen = 0;
+      if (state.wantedStars < (obj.wanted || 1)) {
+        m.data.heatCd = (m.data.heatCd || 0) - dt;
+        if (m.data.heatCd <= 0) {
+          state.wanted = obj.wanted || 1;
+          state.wantedStars = Math.ceil(state.wanted);
+          m.data.heatCd = HEAT.reraiseSeconds;
+          AudioSys.sfx('wantedUp');
+          floatText(state, p.x, p.y - 30, `THE HEAT IS ON — ${'★'.repeat(state.wantedStars)}`, PALETTE.star);
+        }
+      }
       if (state.wantedStars >= (obj.wanted || 1)) m.data.timer += dt;
       else m.data.timer = Math.max(0, m.data.timer - dt);
       if (m.data.timer >= obj.seconds) return advanceObjective(state);
@@ -966,11 +1064,27 @@ export function currentObjective(world) {
     out.x = t.x;
     out.y = t.y;
   } else if (obj.type === 'destroy') {
-    const rival = world.state.cars.find((c) => !c.dead && c.driver === 'rival');
+    // Point at the NEAREST rival, not the first spawned: the marker should
+    // name the car the player can actually reach and shoot right now.
+    let rival = null;
+    let bestD = Infinity;
+    for (const c of world.state.cars) {
+      if (c.dead || c.driver !== 'rival') continue;
+      const d = Math.hypot(c.x - (world.state.player.car ? world.state.player.car.x : world.state.player.x),
+        c.y - (world.state.player.car ? world.state.player.car.y : world.state.player.y));
+      if (d < bestD) { bestD = d; rival = c; }
+    }
     if (rival) { out.x = rival.x; out.y = rival.y; }
     out.count = `${m.data.destroyed || 0}/${obj.count}`;
   } else if (obj.type === 'fight') {
-    const thug = world.state.peds.find((x) => !x.dead && x.hostile);
+    // Same: the nearest thug is the fight the player is already in.
+    let thug = null;
+    let bestD = Infinity;
+    for (const x of world.state.peds) {
+      if (x.dead || !x.hostile) continue;
+      const d = Math.hypot(x.x - world.state.player.x, x.y - world.state.player.y);
+      if (d < bestD) { bestD = d; thug = x; }
+    }
     if (thug) { out.x = thug.x; out.y = thug.y; }
     out.count = `${world.state.kills - m.data.killsAtStart}/${obj.count}`;
   } else if (obj.type === 'survive') {
@@ -1077,13 +1191,16 @@ export function stepWorld(world, dt, input, aim) {
   const { state } = world;
   let events = 0;
   state.time += dt;
+  state.skidCd = Math.max(0, state.skidCd - dt);
   const p = state.player;
   const actions = input ? input.takeActions() : 0;
   if (actions & 4) events |= enterCar(state); // ACTION_ENTER
   if (actions & 8) events |= punch(state); // ACTION_PUNCH
   if (actions & 16) AudioSys.sfx('horn'); // ACTION_HORN
-  if (input && (input.mouseDown() || input.spaceHeld()) && !p.car) events |= shoot(state, aim);
-  if (p.car) events |= stepDrive(state, dt, input);
+  // Click shoots on foot and out of a car window; Space shoots on foot only
+  // (in a car it is the handbrake).
+  if (input && (input.mouseDown() || (input.spaceHeld() && !p.car))) events |= shoot(state, aim);
+  if (p.car) events |= stepDrive(state, dt, input, aim);
   else if (input) events |= stepOnFoot(state, dt, input, aim);
   // Traffic and rivals.
   for (const car of state.cars) {
@@ -1105,8 +1222,7 @@ export function stepWorld(world, dt, input, aim) {
   if (trafficCount < TRAFFIC.cars && state.time % 0.5 < dt) {
     const spot = state.city.roadPoint(state.rng);
     if (Math.hypot(spot.x - px, spot.y - py) > 600 && Math.hypot(spot.x - px, spot.y - py) < 1200) {
-      const kinds = ['sedan', 'sedan', 'taxi', 'truck', 'sport'];
-      const car = makeCar(state.rng, kinds[Math.floor(state.rng() * kinds.length)], spot.x, spot.y, spot.angle, 'traffic');
+      const car = makeCar(state.rng, STREET_KINDS[Math.floor(state.rng() * STREET_KINDS.length)], spot.x, spot.y, spot.angle, 'traffic');
       car.speed = 120;
       car.targetSpeed = 40;
       state.cars.push(car);
@@ -1131,7 +1247,7 @@ export function stepWorld(world, dt, input, aim) {
   stepCamera(state, dt);
   // Engine hum follows the player's car.
   AudioSys.engine(p.car ? Math.abs(p.car.speed) / CAR_CLASS[p.car.kind].maxSpeed : 0);
-  state.score = state.earned + state.missionIndex * 500 + state.kills * 25 + state.carsStolen * 10;
+  state.score = state.earned + state.missionIndex * 500 + state.kills * 25 + state.carsStolen * 10 + state.nearMisses * ECONOMY.nearMissScore;
   state.saveTimer += dt;
   if (state.saveTimer > 5) {
     state.saveTimer = 0;

@@ -4,15 +4,15 @@
 // at the docks. Every name, place and line here is original to this game.
 //
 // THE ARC
-//   1. First Keys      — tutorial: steal a car, drive it to the garage.
-//   2. The Coral Run   — first real job: pick up a package, deliver it.
-//   3. Kestrel Trouble — the rival crew appears: wreck 3 of their cars.
-//   4. High Roller     — a casino cash case, moved quietly to the hideout.
-//   5. Hot Wheels      — payback at the marina, then a respray to cool off.
-//   6. Heat Wave       — first real police heat: fight, survive, escape.
+//   1. First Keys        — tutorial: steal a car, drive it to the garage.
+//   2. The Coral Run     — first real job: pick up a package, deliver it.
+//   3. Kestrel Trouble   — the rival crew appears: wreck 3 of their cars.
+//   4. High Roller       — a casino cash case, moved quietly to the hideout.
+//   5. Hot Wheels        — payback at the marina, then a respray to cool off.
+//   6. Heat Wave         — first real police heat: fight, survive, escape.
 //   7. The Long Way Home — the ledger is stolen; take it back under a
 //                          three-star manhunt and lose the cops.
-//   8. The Docks Job   — the finale: grab the Kestrels' whole shipment,
+//   8. The Docks Job     — the finale: grab the Kestrels' whole shipment,
 //                          survive the storm they send, lose the cops,
 //                          and escape to the docks. After tonight, the
 //                          Bay belongs to Deke.
@@ -22,7 +22,9 @@
 //   are 2-3 objectives with no wanted level; from mission 6 on, every job
 //   ends with police heat that must be survived and then shaken off.
 //   Rival-car counts rise 3 → 4, survive timers rise 20s → 25s, and the
-//   wanted floor rises from 2 stars to 3.
+//   wanted floor rises from 2 stars to 3. A `survive` objective brings its
+//   own heat (see HEAT in config.js): the wanted level rises to the
+//   objective's floor on its own, so the job is always finishable.
 //
 // OBJECTIVE TYPES (exactly the ones world.js implements — no others)
 //   goto    { landmark, radius, text }   — reach the marker, on foot or in a car.
@@ -31,7 +33,8 @@
 //   pickup  { landmark, radius, text }   — collect the package at the marker.
 //   deliver { landmark, radius, text }   — arrive at the marker carrying it.
 //   destroy { count, kind:'rival', text }— destroy N rival cars (world.js
-//                                          spawns them; ram or shoot them).
+//                                          spawns them; ram, shoot or
+//                                          drive-by them).
 //   survive { seconds, wanted, text }    — survive N seconds while wanted
 //                                          is at least `wanted` stars.
 //   escape  { text }                     — bring the wanted level down to 0.

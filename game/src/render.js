@@ -58,6 +58,12 @@ function drawCar(ctx, car, time) {
     ctx.textAlign = 'center';
     ctx.fillText('TAXI', 0, 3);
   }
+  if (car.kind === 'muscle') {
+    // Hood scoop: the muscle car's tell.
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    roundRect(ctx, spec.length / 2 - 26, -5, 14, 10, 3);
+    ctx.fill();
+  }
   if (car.kind === 'police') {
     // Flashing light bar.
     const phase = Math.floor(time * 3) % 2 === 0;
@@ -177,6 +183,15 @@ function drawMarker(ctx, x, y, time, color) {
   ctx.restore();
 }
 
+/** The shops the player can use, as minimap dots: paint (green), hospital
+ * (white cross) and gun shop (yellow). Landmarks come from the city so the
+ * dots can never drift from the world. */
+const SHOP_DOTS = [
+  { name: 'paintShop', color: PALETTE.health },
+  { name: 'hospital', color: '#ffffff' },
+  { name: 'gunShop', color: PALETTE.ammo },
+];
+
 function drawMinimap(ctx, state, world) {
   const m = MINIMAP;
   ctx.save();
@@ -192,6 +207,10 @@ function drawMinimap(ctx, state, world) {
     ctx.arc(m.x + x * sx, m.y + y * sy, r, 0, Math.PI * 2);
     ctx.fill();
   };
+  for (const shop of SHOP_DOTS) {
+    const lm = state.city.landmarks[shop.name];
+    if (lm) dot(lm.x, lm.y, shop.color, 2.5);
+  }
   for (const car of state.cars) {
     if (car.dead) continue;
     if (car.driver === 'police') dot(car.x, car.y, '#ff3b30', 3);
@@ -416,6 +435,33 @@ export function createRenderer(canvas) {
     }
   }
 
+  /** Full-screen feedback, drawn in screen space after the world: a red
+   * vignette that deepens as health falls, and a pulsing red frame while
+   * the wanted level is 3 stars or higher. */
+  function drawDanger(state, time) {
+    const p = state.player;
+    // Screen space, not world space: the HUD transform is still applied.
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    const lowHp = 1 - p.health / PLAYER.health;
+    if (lowHp > 0.25) {
+      const alpha = (lowHp - 0.25) * 0.5 * (0.7 + 0.3 * Math.sin(time * 5));
+      const grad = ctx.createRadialGradient(
+        canvas.width / 2, canvas.height / 2, Math.min(canvas.width, canvas.height) * 0.35,
+        canvas.width / 2, canvas.height / 2, Math.max(canvas.width, canvas.height) * 0.72,
+      );
+      grad.addColorStop(0, 'rgba(255,30,20,0)');
+      grad.addColorStop(1, `rgba(255,30,20,${alpha.toFixed(3)})`);
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+    if (state.wantedStars >= 3) {
+      const pulse = 0.25 + 0.2 * Math.sin(time * 6);
+      ctx.strokeStyle = `rgba(255,59,48,${pulse.toFixed(3)})`;
+      ctx.lineWidth = 10;
+      ctx.strokeRect(5, 5, canvas.width - 10, canvas.height - 10);
+    }
+  }
+
   return {
     draw(state, world, screen, best, save) {
       const time = state.time;
@@ -446,6 +492,7 @@ export function createRenderer(canvas) {
       if (screen === SCREEN_PLAY) {
         drawHud(ctx, state, world);
         drawMinimap(ctx, state, world);
+        drawDanger(state, time);
         return;
       }
       if (screen === SCREEN_PAUSED) {

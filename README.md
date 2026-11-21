@@ -8,9 +8,9 @@ Verde Bay — a top-down open-world crime game in the spirit of GTA 6: an origin
 
 You are Deke Rook, a getaway driver back in Verde Bay with a busted car and an empty wallet. The fixer Marisol Vega has eight jobs for you. Steal cars, outrun the police, fight the Kestrels, and finish the last job at the docks.
 
-Systems: a drivable city (roads, traffic, pedestrians, marina and docks), car stealing and driving (arcade handling, damage, explosions), a 5-star wanted system with police cars and foot officers, busted/wasted, a paint shop that clears heat for cash, 8 story missions with markers and rewards, on-foot combat (punch, pistol with mouse aim), cash pickups and ammo, a HUD with health, cash, ammo and wanted stars, a live minimap, a start screen, pause, and a localStorage save (missions, cash, best score). WebAudio synth SFX + a looping groove, no audio files, no network requests.
+Systems: a drivable city (roads, traffic, pedestrians, marina, docks and boats), car stealing and driving (arcade handling, damage, explosions, five car classes incl. muscle cars), drive-by shooting from the car window, a 5-star wanted system with police cars and foot officers, busted/wasted (a hospital stay costs cash), a paint shop that clears heat for cash, a hospital that patches you up, a gun shop that sells ammo, near-miss score bonuses for threading traffic at speed, 8 story missions with markers and rewards (survive jobs bring their own police heat, so they are always finishable), on-foot combat (punch, pistol with mouse aim), cash pickups and ammo, a HUD with health, cash, ammo and wanted stars, a live minimap with shop dots, low-health vignette and a red frame at 3+ stars, a start screen, pause, and a localStorage save (missions, cash, best score). WebAudio synth SFX + a looping groove, no audio files, no network requests.
 
-Controls: WASD/arrows move and drive, Shift run, E enter/exit car, Space shoot (on foot) / handbrake (in car), F punch, H horn, M mute, P pause, R restart, mouse aims, click shoots.
+Controls: WASD/arrows move and drive, Shift run, E/X enter/exit car, click shoot (on foot and drive-by), Space shoot (on foot) / handbrake (in car), F/Q punch, H horn, M mute, P pause, R restart, mouse aims.
 
 ## Run it
 

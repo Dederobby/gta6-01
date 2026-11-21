@@ -2,7 +2,7 @@
 // one-shot presses (confirm, pause, enter-car, punch, horn, mute, restart) are
 // queued as bit flags and taken once by the loop, so a press between two frames
 // is never lost and never counted twice. The mouse position (in canvas pixels)
-// aims the pistol; a click shoots.
+// aims the pistol; a click shoots — on foot, or out of a car window.
 
 export const ACTION_CONFIRM = 1;
 export const ACTION_PAUSE = 2;
@@ -23,7 +23,9 @@ const KEYMAP = {
 const PRESSMAP = {
   Enter: ACTION_CONFIRM,
   KeyE: ACTION_ENTER,
+  KeyX: ACTION_ENTER,
   KeyF: ACTION_PUNCH,
+  KeyQ: ACTION_PUNCH,
   KeyH: ACTION_HORN,
   KeyM: ACTION_MUTE,
   KeyR: ACTION_RESTART,

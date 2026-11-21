@@ -6,23 +6,37 @@
 // with the vendored make.fun library.
 //
 // The game: a top-down open-world crime game in the original sun-soaked city
-// of Verde Bay — drive and walk the streets, steal cars, outrun the police at
-// five wanted levels, fight, and run eight story missions for the fixer
-// Marisol Vega, with a HUD, a live minimap, WebAudio synth sound and music,
-// a start screen and a localStorage save. Put 3 or 4 PNG or JPEG screenshots
-// in screenshots/ (the first by name is the cover) and run it.
+// of Verde Bay — drive and walk the streets, steal cars (including drive-by
+// shooting from the window), outrun the police at five wanted levels, fight,
+// and run eight story missions for the fixer Marisol Vega, with a HUD, a live
+// minimap, WebAudio synth sound and music, a start screen and a localStorage
+// save. Put 3 or 4 PNG or JPEG screenshots in screenshots/ (the first by name
+// is the cover) and run it.
 //
 // Serve it locally with `node serve.ts`, then open http://localhost:8080.
 // Outside the grader's container, MAKEFUN_OUTPUT_DIR stands in for /output:
 //   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
 
-import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildDossier } from './vendor/makefun-game.ts';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 const out = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
+
+// Fail fast, with a readable reason, when the entry is not shippable: the
+// grader would refuse it anyway, and a silent partial /output is worse.
+const indexHtml = join(here, 'game', 'index.html');
+if (!existsSync(indexHtml) || !statSync(indexHtml).isFile()) {
+  throw new Error('main.ts: game/index.html is missing — the game cannot be handed in');
+}
+const shots = existsSync(join(here, 'screenshots'))
+  ? readdirSync(join(here, 'screenshots')).filter((n) => !n.startsWith('.'))
+  : [];
+if (shots.length < 3 || shots.length > 4) {
+  throw new Error(`main.ts: screenshots/ must hold 3 or 4 images, found ${shots.length}`);
+}
 
 mkdirSync(out, { recursive: true });
 cpSync(join(here, 'game'), join(out, 'game'), { recursive: true });

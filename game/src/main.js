@@ -5,12 +5,13 @@
 //
 // ?seed=N fixes the city and traffic. ?shot=chase|street|mission|title (with
 // &seed=N) stages that scene instead of running the loop, paints it twice and
-// sets window.__shotReady for a screenshot.
+// sets window.__shotReady for a screenshot. ?mission=N starts a fresh game
+// at that mission (1-8), for testing a single job without replaying the arc.
 import { FIELD, SAVE_KEY, STEP, STORY } from './config.js';
 import { createRandom } from './random.js';
 import {
   EVENT_HIT, EVENT_MISSION, EVENT_OVER, EVENT_WIN, EVENT_WANTED,
-  applySave, createWorld, readBest, readSave, respawn, resetWorld, stepDemo, stepWorld,
+  applySave, createWorld, readBest, readSave, respawn, resetWorld, startMission, stepDemo, stepWorld,
 } from './world.js';
 import {
   ACTION_CONFIRM, ACTION_ENTER, ACTION_MUTE, ACTION_PAUSE, ACTION_RESTART, createInput,
@@ -28,6 +29,10 @@ const params = new URLSearchParams(window.location.search);
 const shot = params.get('shot');
 const seedParam = Number.parseInt(params.get('seed') ?? '', 10);
 const seed = Number.isInteger(seedParam) ? seedParam : Math.floor(Math.random() * 4294967296);
+const missionParam = Number.parseInt(params.get('mission') ?? '', 10);
+const missionJump = Number.isInteger(missionParam) && missionParam >= 1 && missionParam <= 8
+  ? missionParam - 1
+  : null;
 
 const canvas = document.getElementById('game');
 const status = document.getElementById('status');
@@ -95,7 +100,13 @@ function runGame() {
 
   function startGame(fromSave) {
     if (fromSave && save) applySave(world, save);
-    else resetWorld(world);
+    else {
+      resetWorld(world);
+      if (missionJump !== null) {
+        world.state.missionIndex = missionJump;
+        startMission(world, missionJump);
+      }
+    }
     accumulator = 0;
     screen = SCREEN_PLAY;
     announce(`Playing. ${STORY.hero} is out in ${STORY.city}.`);

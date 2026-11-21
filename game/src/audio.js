@@ -75,6 +75,12 @@ export const AudioSys = {
         case 'click':      this._tone('square', 800, 520, 0.06, 0.18); break;
         case 'pickup':     this._seq([660, 990], 0.07, 0.12, 0.25, 'sine', t); break;
         case 'cash':       this._seq([1320, 1760], 0.06, 0.14, 0.22, 'sine', t); break;
+        case 'buy':        this._seq([988, 1319], 0.08, 0.12, 0.22, 'triangle', t); break;
+        case 'nearMiss':
+          this._noise(0.22, 0.3, 'bandpass', 1400);
+          this._tone('sine', 1200, 1800, 0.18, 0.1); break;
+        case 'skid':
+          this._noise(0.28, 0.25, 'highpass', 1800); break;
         case 'shot':
           this._noise(0.14, 0.5, 'lowpass', 1800);
           this._tone('square', 190, 55, 0.10, 0.35); break;
@@ -210,6 +216,8 @@ export const AudioSys = {
   // ---- music: ~104 BPM groove in A minor, Am – F – C – G (one bar each).
   // Bass walks the roots with octave pops, hats tick the offbeats, a soft pad
   // holds each chord and a plucky lead plays a pentatonic phrase per bar.
+  // Every fourth bar the lead drops out and a second, higher phrase answers,
+  // so the loop breathes instead of repeating one bar forever.
   _startMusic() {
     if (this._musicTimer) return;
     this._step = 0;
@@ -250,7 +258,11 @@ export const AudioSys = {
       [329.63, 0, 392, 0, 440, 0, 0, 523.25, 0, 440, 0, 392, 0, 0, 329.63, 0],
       [0, 523.25, 0, 659.25, 0, 0, 783.99, 0, 659.25, 0, 523.25, 0, 0, 440, 0, 0],
     ];
-    const note = LEAD[bar % 4][s];
+    // Answer phrase: every fourth bar (bar % 4 === 3) the lead hands over
+    // to a higher answering phrase instead of repeating the rotation.
+    const ANSWER = [880, 0, 783.99, 0, 659.25, 0, 783.99, 0, 880, 0, 0, 659.25, 0, 0, 523.25, 0];
+    const phrase = bar % 4 === 3 ? ANSWER : LEAD[bar % 4];
+    const note = phrase[s];
     if (note) this._musicNote('triangle', note, t, stepDur * 1.4, 0.12);
   },
   // A single music note on the music bus.

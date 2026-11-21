@@ -19,7 +19,7 @@ export const CELL = { BUILDING: 0, ROAD: 1, SIDEWALK: 2, PARK: 3, WATER: 4, BEAC
  * missions.js refers to them by key; world.js resolves the coordinates. */
 export const LANDMARKS = [
   'hideout', 'garage', 'bank', 'docks', 'paintShop', 'hospital',
-  'park', 'stadium', 'warehouse', 'mansion', 'casino', 'marina',
+  'park', 'stadium', 'warehouse', 'mansion', 'casino', 'marina', 'gunShop',
 ];
 
 export const PLAYER = {
@@ -31,6 +31,7 @@ export const PLAYER = {
   punchRange: 34,
   punchCooldown: 0.38,
   shotDamage: 25,
+  driveByDamage: 18, // shooting from a car window: weaker, but you keep moving
   shotCooldown: 0.22,
   shotRange: 520,
   startAmmo: 24,
@@ -38,12 +39,14 @@ export const PLAYER = {
   invulnerable: 1.0,
 };
 
-/** Car classes: the city spawns sedans, taxis, trucks and sports cars. */
+/** Car classes: the city spawns sedans, taxis, trucks, sports cars and
+ * muscle cars. Police and rival cars are tuned separately below. */
 export const CAR_CLASS = {
   sedan: { length: 64, width: 32, accel: 420, maxSpeed: 430, reverse: 160, grip: 3.4, health: 100 },
   taxi: { length: 64, width: 32, accel: 400, maxSpeed: 410, reverse: 160, grip: 3.4, health: 100 },
   truck: { length: 84, width: 36, accel: 300, maxSpeed: 330, reverse: 130, grip: 2.8, health: 160 },
   sport: { length: 62, width: 30, accel: 560, maxSpeed: 560, reverse: 190, grip: 4.2, health: 80 },
+  muscle: { length: 68, width: 33, accel: 500, maxSpeed: 500, reverse: 175, grip: 3.1, health: 130 },
   police: { length: 66, width: 32, accel: 500, maxSpeed: 520, reverse: 180, grip: 4.0, health: 120 },
   rival: { length: 64, width: 32, accel: 470, maxSpeed: 480, reverse: 170, grip: 3.8, health: 90 },
 };
@@ -62,26 +65,38 @@ export const WANTED = {
   ramDamage: 6,
 };
 
+/** Missions that ask the player to survive police heat bring the heat
+ * themselves: a `survive` objective raises the wanted level to its floor
+ * (and re-raises it every few seconds while the timer runs), so the job is
+ * always finishable instead of depending on crimes the player may not
+ * have committed. */
+export const HEAT = {
+  reraiseSeconds: 3, // seconds between heat re-raises during a survive objective
+};
+
 export const ECONOMY = {
   startCash: 150,
   paintCost: 100, // respray clears the wanted level
   hospitalCost: 80,
-  ammoCost: 40, // per 24 bullets at the gun shop (ammo pickup)
+  ammoCost: 40, // per 24 bullets at the gun shop
   missionReward: [400, 600, 800, 1000, 1200, 1600, 2000, 3000],
   cashPickup: 50,
+  nearMissScore: 15, // points for threading past traffic at speed
+  nearMissSpeed: 300, // how fast the player's car must be going
 };
 
 export const MISSION_COUNT = 8;
 
-/** Controls. Mouse aims the pistol; click shoots. */
+/** Controls. Mouse aims the pistol; click shoots (even from a car window).
+ * Q is a second punch key, X a second enter/exit key. */
 export const CONTROLS = {
   up: ['KeyW', 'ArrowUp'],
   down: ['KeyS', 'ArrowDown'],
   left: ['KeyA', 'ArrowLeft'],
   right: ['KeyD', 'ArrowRight'],
   run: ['ShiftLeft', 'ShiftRight'],
-  enterCar: ['KeyE'],
-  punch: ['KeyF'],
+  enterCar: ['KeyE', 'KeyX'],
+  punch: ['KeyF', 'KeyQ'],
   shoot: ['Space'],
   handbrake: ['Space'],
   horn: ['KeyH'],
